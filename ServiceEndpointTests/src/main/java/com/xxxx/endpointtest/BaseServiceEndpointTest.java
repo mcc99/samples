@@ -2,6 +2,7 @@ package com.xxxx.endpointtest;
 
 import java.io.ByteArrayInputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -30,6 +31,7 @@ import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 
+import org.apache.log4j.PropertyConfigurator;
 import org.xmlunit.builder.DiffBuilder;
 import org.xmlunit.builder.Input;
 import org.xmlunit.diff.Diff;
@@ -55,6 +57,12 @@ import org.w3c.dom.Document;
  * be written by the programmer to create a new service endpoint test unless a very specific kind of
  * test is needed.
  *
+ * IntelliJ config note: If you get class not found errors at runtime while running in IntelliJ, add
+ * the following paths under Dependencies: F4 (Open Module Settings)-under Project Settings-select Modules-in Dependencies tab:
+ *
+ * <projectpath>\target\classes
+ * <projectpath>\target\test-classes
+ *
  * Specifying Overrides:
  *
  * A properties file, baseserviceendpointtest.properties, located at /src/main/resources can be created and edited
@@ -79,10 +87,14 @@ import org.w3c.dom.Document;
  *
  * ==============================
  *
+ * Running from ServiceEndpointTestsRunner, you can specify the location and name of this file as an override of the default
+ * name and location of the file.  Likewise for the log4j props file and the name and location of the test suite file(s)
+ *
  * Logging:
  *
  * Configure the log name and log location, format, etc., with /src/main/resources/log4j.properties.  Extending classes
- * use the 'log' object they inherit from this class.
+ * use the 'log' object they inherit from this class.  Again, note that this path and file name can be overridden
+ * when running tests using ServiceEndpointTestsRunner to run tests.
  *
  */
 public abstract class BaseServiceEndpointTest {
@@ -93,8 +105,8 @@ public abstract class BaseServiceEndpointTest {
 	// ////////////////////////////////////////////
 
 	protected static Logger       log           = Logger.getLogger(BaseServiceEndpointTest.class);
+	protected static String       baselinesPath = "baseline/";
 
-	protected static       String baselinesPath = "baseline/";
 	protected static       String baseURL       = "http://localhost:15080/";
 
 	protected static final String NOBASELINE    = "NOBASELINE";
@@ -114,7 +126,7 @@ public abstract class BaseServiceEndpointTest {
 	/* protected static String testFilesNameStartText = "test"; // Text the test file names start with
 	   protected static String testFilesExt           = ".txt"; // File ext. of the test files names
 	*/
-	private static final String propsFileName              = "baseserviceendpointtest.properties";
+
 	private static final String BASELINES_PATH_KEY         = "baselinesPath";
 	private static final String BASE_URL_KEY               = "baseURL";
 	private static final String CONTENT_TYPE_KEY           = "Content-type";
@@ -124,11 +136,23 @@ public abstract class BaseServiceEndpointTest {
 
 	private boolean addBreaksAtGreaterThans = true; // ATM, always true.  Not yet a user option but may be one day.
 
+	private final static String propsFileName = "main/resources/baseserviceendpointtest.properties"; // Can specify a different file name on a per-run basis via ServiceEndpointTestDefaultsSetter in ServiceEndpointTestsRunner
+
+	/* When running from ServiceEndpointTestsRunner, ServiceEndpointTestDefaultsSetter will have had its
+	   relevant values set by the time the class gets loaded which won't happen
+	   until TestNG_instance.run() is called in ServiceEndpointTestsRunner.  If not, the getXXX()s below
+	   will return nulls, which are handled by configureLogger() and assignValuesFromPropertiesFile gracefully. */
 	static {
-		configureLogger();
-		assignValuesFromPropertiesFile();
+		ServiceEndpointTestDefaultsSetter setds = ServiceEndpointTestDefaultsSetter.getInstance();
+		configureLogger(setds.getLog4jPropsFileName());
+		assignValuesFromPropertiesFile(setds.getPropsFileName());
 	}
 
+
+	public static void main(String args[]) {
+		print("Please run this class using ServiceEndpointTestsRunner or in IntelliJ using a TestNG profile.");
+		print("Exiting.");
+	}
 
 	/**
 	 * Executes SOAP call-requiring test using passed-in values as parameters.  The returned value
@@ -161,7 +185,7 @@ public abstract class BaseServiceEndpointTest {
 
 	/**
 	 * Convenience call to doSoapTest(String url, String soapRequestBody, String baselineFileFqn, boolean checkXML).
-	 * 'checkXML' is passed in as true, unlike when doing REST tests where the default for 'checkXML' is false.
+	 * 'checkXML' is passed in as true, unlike when doing REST tests where the default for checkXML is false.
 	 *
 	 * @param url
 	 * @param soapRequestBody
@@ -208,7 +232,7 @@ public abstract class BaseServiceEndpointTest {
 
 	/**
 	 * Convenience call to doRestTest(String url, Map params, String baselineFileFqn, boolean checkXML).
-	 * 'checkXML' is passed in as false, unlike when doing SOAP tests where the default for 'checkXML' is true.
+	 * 'checkXML' is passed in as false, unlike when doing SOAP tests where the default for checkXML is true.
 	 *
 	 * @param url
 	 * @param params
@@ -314,7 +338,7 @@ public abstract class BaseServiceEndpointTest {
 			                  .withTest(Input.fromDocument(getDocument(response)))
 			                  .checkForSimilar().ignoreComments().build();
 		} else {
-			/* For when 'checkXML' is false because DiffBuilder only wants to work with validated HTML/XML documents.
+			/* For when checkXML is false because DiffBuilder only wants to work with validated HTML/XML documents.
 			   If they cannot be validated, it throws an exception.  If the user does not want strict document
 			   conformance checking applied to the test, we have to use the less insistent way to do the diff. */
 			patch = DiffUtils.diff(splitLines(baseline), splitLines(response));
@@ -539,7 +563,6 @@ public abstract class BaseServiceEndpointTest {
 	 * BasicNameValuePair object that reads: "A,b,C" with a key of "letter" is converted to the following
 	 * string: letter=A&letter=b&letter=C and added to the URL, as in: http://www.host.com/?letter=A&letter=b&letter=C
 	 *
-	 *
 	 * @param url
 	 * @param paramsList
 	 * @return String
@@ -547,7 +570,7 @@ public abstract class BaseServiceEndpointTest {
 	private String buildRequestURL(String url, ArrayList<BasicNameValuePair> paramsList) {
 		url += (!url.contains("?") && !url.endsWith("/")) ? "/?" : "";
 		url += (!url.contains("?") ? "?" : "");
-		url += (url.contains("?") && !url.endsWith("?") && !url.endsWith("&")) ? "&" : "";
+		url += (!url.endsWith("?") && !url.endsWith("&")) ? "&" : "";
 		return (url += buildQueryString(paramsList));
 	}
 
@@ -563,7 +586,10 @@ public abstract class BaseServiceEndpointTest {
 	 */
 	@SuppressWarnings("StringConcatenationInsideStringBufferAppend")
 	private String buildQueryString(ArrayList<BasicNameValuePair> paramsList) {
+
 		StringBuilder querysb = new StringBuilder();
+		final String standInForBlankValue = "&";
+
 		paramsList.forEach(it -> {
 			String key = it.getName();
 			String value = it.getValue();
@@ -572,31 +598,10 @@ public abstract class BaseServiceEndpointTest {
 			 if(!value.contains(",")) {
 				  querysb.append(key + "=" + value + "&");
 			 } else {
-			 	/*
-			 	  We have to control for cases where there are multiple vals associated with the same key.  In that case,
-			 	  we got back a comma-delimited list from convertMapToBasicNameValuePairList().  But marginal cases will
-			 	  burn us.  We have to control for when a key-value pair has a null or empty value for the first key-value
-			 	  pair added to the map for the multi-value key.  Likewise if it was the last one.  And what of any time
-			 	  in between?  For example, adding "" four times for the key "mykey" yields the following
-			 	  comma-separated string listing: ",,,".  String.split() will make that out to be two blank values, so we'd get back
-			 	  "myKey=&myKey=" instead of "myKey=&myKey=&myKey=&myKey=".  To protect against this, if the value string
-			 	  should start or end with a comma, a flag must be pre-pended or post-pended to the string to indicate that it
-			 	  is an intentionally blank value.  Likewise for the nothingness between commas, as in: ",,".  The challenge is, what
-			 	  should be the flag?  Theoretically, the user can supply ANY typable value as the value side of a key-value pair.
-			 	  Since the values have all already been URL-encoded by now, one set of chars we can be sure will not be among
-			 	  the value-side values are chars encoded by URLEncoder.encode().  So most any HTTP-reserved char will work.  In this case, I
-			 	  simply chose an ampersand as the empty-value flag for the values that are supplied as null or blank by the user.
-			 	 */
-				if(value.startsWith(",")) {
-				 value = "&" + value;
-				}
-				if(value.endsWith(",")) {
-				 value += "&";
-				}
-				value = value.replace(",,", ",&,");
+				value = getNormalizedCsvString(value, standInForBlankValue);
 				ArrayList<String> vals = new ArrayList<>(Arrays.asList(value.split(",")));
 				vals.forEach(val -> {
-					querysb.append(key + "=" + (val.equals("&") ? "" : val) + "&");
+					querysb.append(key + "=" + (val.equals(standInForBlankValue) ? "" : val) + standInForBlankValue);
 				});
 			 }
 			}
@@ -604,6 +609,37 @@ public abstract class BaseServiceEndpointTest {
 		String querystring = querysb.toString();
 		return (!querystring.isEmpty() ? querystring.substring(0, querystring.length()-1) : querystring);
 	}
+
+
+	/**
+	 * We have to control for cases where there are multiple vals associated with the same key.  In that case,
+	 * we got back a comma-delimited list from convertMapToBasicNameValuePairList().  But marginal cases will
+	 * burn us.  We have to control for when a key-value pair has a null or empty value for the first key-value
+	 * pair added to the map for the multi-value key.  Likewise if it was the last one.  And what of any time
+	 * in between?  For example, adding "" four times for the key "mykey" yields the following
+	 * comma-separated string listing: ",,,".  String.split() will make that out to be two blank values, so we'd get back
+	 * "myKey=&myKey=" instead of "myKey=&myKey=&myKey=&myKey=".  To protect against this, if the value string
+	 * should start or end with a comma, a flag (standInForBlankValue) must be pre-pended or post-pended to the string to indicate
+	 * that it is an intentionally blank value.  Likewise for the nothingness between commas, as in: ",,".  The quesiton is,
+	 * what should be the flag?  Theoretically, the user can supply ANY typable value as the value side of a key-value pair.
+	 * Since the values have all already been URL-encoded by now, one set of chars we can be sure will not be among
+	 * the value-side values are chars encoded by URLEncoder.encode().  So any HTTP-reserved char will work.  (An ampersand
+	 * is a good value to use since it will not appear as a literal in any value that has been HTTP URL-encoded.)
+	 *
+	 * @param value
+	 * @param standInForBlankValue
+	 * @return
+	 */
+	private String getNormalizedCsvString(String value, String standInForBlankValue) {
+		if(value.startsWith(",")) {
+			value = standInForBlankValue + value;
+		}
+		if(value.endsWith(",")) {
+			value += standInForBlankValue;
+		}
+		return value.replace(",,", "," + standInForBlankValue + ",");
+	}
+
 
 	/**
 	 * Converts a Map to ArrayList<BasicNameValuePair>.  If 'map' is null or empty, an ArrayList<BasicNameValuePair>
@@ -722,23 +758,45 @@ public abstract class BaseServiceEndpointTest {
 
 
 	/**
-	 * Looks for file with name assigned to variable 'propsFileName' at src/main/resources and reads in
+	 * Writes output header to log file.
+	 *
+	 * @param url
+	 */
+	private void doTestOutputHeader(String url) {
+		logInfo(testHeader);
+		logInfo("Test Method Name: " + getCallingMethodName());
+		logInfo("Test URL        : " + url);
+		logInfo("");
+	}
+
+
+	/**
+	 * Looks for file with name assigned to variable 'propsFileName' at main/resources and reads in
 	 * the content as a key-value pair property list.  If no such file exists, the default values for the
 	 * settable variables are used.  Otherwise the file entries override them.  If the properties file
 	 * appears to have a bad entry in it, the method reports a fatal error and the VM exits so the user knows
 	 * the properties file has a bad entry in it that needs investigating.
 	 */
-	private static void assignValuesFromPropertiesFile() {
+	private static void assignValuesFromPropertiesFile(String propsFileNm) {
 
 		Properties props = new Properties();
 
+		if(propsFileNm == null || propsFileNm.isEmpty()) {
+			propsFileNm = propsFileName; // Use class default value if we have no user-specified file.
+		}
+
 		try {
-			props.load(BaseServiceEndpointTest.class.getResourceAsStream("/" + propsFileName));
-			logInfo("assignValuesFromPropertiesFile(): Properties file '" + propsFileName + "' loaded.");
+			File propsfile = new File(propsFileNm);
+			// Handling for when we run in IntelliJ
+			if(!propsfile.exists()) {
+				propsfile = new File("src/" + propsFileNm);
+			}
+			props.load(new FileInputStream(propsfile));
+			logInfo("BaseServiceEndpointTest.assignValuesFromPropertiesFile(): Properties file '" + propsFileNm + "' loaded.");
 		} catch (NullPointerException e) {
-			logInfo("assignValuesFromPropertiesFile(): Properties file '" + propsFileName + "' not found.  Using defaults.");
+			logInfo("BaseServiceEndpointTest.assignValuesFromPropertiesFile(): Properties file '" + propsFileNm + "' not found.  Using defaults.");
 		} catch (Exception e) {
-			logFatal("assignValuesFromPropertiesFile(): Fatal error occurred reading the '" + propsFileName + "' file by stream.  Check log.  Program exiting.", e);
+			logFatal("BaseServiceEndpointTest.assignValuesFromPropertiesFile(): Fatal error occurred reading the '" + propsFileNm + "' file by stream.  Check log.  Program exiting.", e);
 			System.exit(1);
 		}
 
@@ -752,23 +810,23 @@ public abstract class BaseServiceEndpointTest {
 			entry += (!entry.endsWith("/") ? "/" : "");
 			baselineFile = new File(entry);
 			if(!baselineFile.exists() || !baselineFile.isDirectory()) {
-				logInfo("assignValuesFromPropertiesFile(): Read '" + entry + "' from properties file as the baselines directory path, " +
-				             "but no such path appears to exist.");
-				logFatal("assignValuesFromPropertiesFile(): The baselines directory entry was interpreted to resolve to the following " +
-				              "location: " + baselineFile.getAbsolutePath(), new Exception("Specified directory does not exist."));
+				logInfo("BaseServiceEndpointTest.assignValuesFromPropertiesFile(): Read '" + entry + "' from properties file as the baselines directory path, " +
+				              "but no such path appears to exist.");
+				logFatal("BaseServiceEndpointTest.assignValuesFromPropertiesFile(): The baselines directory entry was interpreted to resolve to the following " +
+				               "location: " + baselineFile.getAbsolutePath(), new Exception("Specified directory does not exist."));
 				System.exit(1);
 			}
 			baselinesPath = entry;
-			logInfo("The baseline files path has been set to '" + baselineFile.getAbsolutePath() + "' from the properties file.");
+			logInfo("BaseServiceEndpointTest.assignValuesFromPropertiesFile(): The baseline files path has been set to '" + baselineFile.getAbsolutePath() + "' from the properties file.");
 		} else {
 			baselineFile = new File(baselinesPath);
-			logInfo("Default baseline files path of '" + baselineFile.getAbsolutePath() + "' is in use.");
+			logInfo("BaseServiceEndpointTest.assignValuesFromPropertiesFile(): Default baseline files path of '" + baselineFile.getAbsolutePath() + "' is in use.");
 		}
 
 		boolean condition = props.containsKey(BASE_URL_KEY);
 		baseURL = condition ? props.getProperty(BASE_URL_KEY) : baseURL;
-		String msg = condition ? "The base URL for requests has been set to '" + baseURL + "' from the properties file." :
-		             "Default base URL for requests of '" + baseURL + "' is in use.";
+		String msg = condition ? "BaseServiceEndpointTest.assignValuesFromPropertiesFile(): The base URL for requests has been set to '" + baseURL + "' from the properties file." :
+		             "BaseServiceEndpointTest.assignValuesFromPropertiesFile(): Default base URL for requests of '" + baseURL + "' is in use.";
 		logInfo(msg);
 	}
 
@@ -776,43 +834,56 @@ public abstract class BaseServiceEndpointTest {
 	/**
 	 * Configures log4j.  If it fails, the tests are not run.  Logging has to be working for tests to run.  Exception and status
 	 * info is sent to std-out until logging is known to be working, then it is logged and sent to std-out via logInfo().
+	 * log4jPropsFileName is the relative or absolute path name of the .properties file to use.  If it is null or empty,
+	 * the default file for log4j instances is used (in our case that is found at: /main/resources )
 	 *
- 	 */
-	private static void configureLogger() {
-		print("configureLogger(): Configuring log4j...");
-		BasicConfigurator.configure();
-		print("configureLogger(): log4j configured.");
+	 * @param log4jPropsFileName
+	 */
+	private static void configureLogger(String log4jPropsFileName) {
+		print("BaseServiceEndpointTest.configureLogger(): Configuring log4j...");
+		if(log4jPropsFileName != null && !log4jPropsFileName.isEmpty()) {
+		 Properties props = new Properties();
+		 try {
+		 	 File logprops = new File(log4jPropsFileName);
+			 // Handling for when we run in IntelliJ
+		 	 if(!logprops.exists()) {
+			   logprops = new File("src/" + log4jPropsFileName);
+		   }
+			 props.load(new FileInputStream(logprops));
+		 } catch (Exception e) {
+		 	 print("BaseServiceEndpointTest.configureLogger: Exception on class startup, could not load specified .properties file at " + log4jPropsFileName);
+			 print("BaseServiceEndpointTest.configureLogger(): Tests cannot be run without a properly-configured log.  Exiting.");
+			 e.printStackTrace();
+			 System.exit(1);
+		 }
+		 PropertyConfigurator.configure(props);
+		} else {
+		 BasicConfigurator.configure();
+		}
+		print("BaseServiceEndpointTest.configureLogger(): log4j configured.");
 		try {
 			if(log != null) {
-				logInfo("configureLogger(): Writing to log at: " +
-				       (new File(((FileAppender) Logger.getRootLogger()
-				                                       .getAppender("baseserviceendpointtest")).getFile()))
-						       .getAbsolutePath());
+				logInfo("BaseServiceEndpointTest.configureLogger(): Writing to log at: " +
+				              (new File(((FileAppender) Logger.getRootLogger().
+						          getAppender("baseserviceendpointtest")).getFile())).getAbsolutePath());
 			} else {
-				throw new Exception("configureLogger(): Unexpected: 'log' object is null.");
+				throw new Exception("BaseServiceEndpointTest.configureLogger(): Unexpected: 'log' object is null.");
 			}
 		} catch (Exception e) {
-			print("configureLogger(): Exception on class startup, failed to obtain root logger reference to report location of log file.");
-			print("configureLogger(): Tests cannot be run without a properly-configured log.  Exiting.");
+			print("BaseServiceEndpointTest.configureLogger(): Exception on class startup, failed to obtain root logger reference to report location of log file.");
+			print("BaseServiceEndpointTest.configureLogger(): Tests cannot be run without a properly-configured log.  Exiting.");
 			e.printStackTrace();
 			System.exit(1);
 		}
 	}
 
-	
 	/**
-	 * Writes output header to log file.
-	 *
-	 * @param url
+	 * Convenience call to configureLogger(String) with null as the passed-in log4j .properties file name value
 	 */
-	private void doTestOutputHeader(String url) {
-		logInfo(testHeader);
-		logInfo("Test Method Name: " + getCallingMethodName());
-		logInfo("Test URL        : " + url);
-		logInfo("");
+	private static void configureLogger() {
+		configureLogger(null);
 	}
-	
-	
+
 	/**
 	 * Adds newline character after each instance of ">" in the line.
 	 *
