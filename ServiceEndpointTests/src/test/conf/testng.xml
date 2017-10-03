@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd">
 <suite name="SuiteEndPt">
-<test name="windstream-restservice-integration-tests">
+<test name="xxxx-restservice-integration-tests">
 	<classes>
-		<class name="com.windstream.endpointtest.TestServiceEndpoints"/>
+		<class name="com.xxxx.endpointtest.TestServiceEndpoints"/>
 	</classes>
 </test>
 </suite>
