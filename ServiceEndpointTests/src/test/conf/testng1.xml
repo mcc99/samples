@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd">
+<suite name="SuiteEndPt1">
+<test name="xxxx-restservice-integration-tests">
+	<classes>
+		<class name="com.xxxx.endpointtest.TestServiceEndpoints"/>
+	</classes>
+</test>
+</suite>
+
+<!-- This is used only for testing ability to support multiple suite files
+     executed on the same run of ServiceEndpointTestRunner -->
