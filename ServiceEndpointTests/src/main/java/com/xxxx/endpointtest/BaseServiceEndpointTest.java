@@ -53,7 +53,7 @@ import org.w3c.dom.Document;
  * this class to see how to use it.  It is designed to be very easy to utilize such that the programmer
  * can make a test without writing any functional code.   I.e., the programmer's edits are changes to
  * parameter values only, which are then passed into a single method (doXXXXTest(), eg: doSoapTest())
- * defined herein that does the actual test work.  Thus no functional programming code need
+ * defined herein that does the actual test work.  So no functional programming code need
  * be written by the programmer to create a new service endpoint test unless a very specific kind of
  * test is needed.
  *
@@ -190,7 +190,7 @@ public abstract class BaseServiceEndpointTest {
 	 * @param url
 	 * @param soapRequestBody
 	 * @param baselineFileFqn
-	 * @return
+	 * @return int
 	 */
 	protected int doSoapTest(String url, String soapRequestBody, String baselineFileFqn) {
 		return doSoapTest(url, soapRequestBody, baselineFileFqn, true);
@@ -255,7 +255,7 @@ public abstract class BaseServiceEndpointTest {
 	 * @return boolean
 	 */
 	protected boolean evalForAssert(int result) {
-		return (result == SUCCESS);
+		return result == SUCCESS;
 	}
 
 
@@ -433,7 +433,7 @@ public abstract class BaseServiceEndpointTest {
 		}
 		try {
 			String retn = cleanWhitespaceBetweenTags(FileUtils.readFileToString(new File(path), UTF8_TEXT));
-			return (addBreaksAtGreaterThans ? addBreaksAtGreaterThans(retn) : retn);
+			return addBreaksAtGreaterThans ? addBreaksAtGreaterThans(retn) : retn;
 		} catch (Exception e) {
 			logError("readFile(): Exception thrown.  Cannot complete test.", e);
 			throw e;
@@ -457,7 +457,7 @@ public abstract class BaseServiceEndpointTest {
 	private String httpSOAPPost(String url, String soapRequestBody) throws Exception {
 		try {
 			String retn = cleanWhitespaceBetweenTags(EntityUtils.toString(invokeHttpSOAPPost(url, (soapRequestBody == null ? "" : soapRequestBody)).getEntity()));
-			return (addBreaksAtGreaterThans ? addBreaksAtGreaterThans(retn) : retn);
+			return addBreaksAtGreaterThans ? addBreaksAtGreaterThans(retn) : retn;
 		} catch (Exception e) {
 			logError("httpSOAPPost(): Exception thrown.  Cannot return request.", e);
 			throw e;
@@ -483,7 +483,7 @@ public abstract class BaseServiceEndpointTest {
 	private String httpRESTGet(String url, Map params) throws Exception {
 		try {
 			String retn = cleanWhitespaceBetweenTags(EntityUtils.toString(invokeHttpRESTGet(url, params).getEntity()));
-			return (addBreaksAtGreaterThans ? addBreaksAtGreaterThans(retn) : retn);
+			return addBreaksAtGreaterThans ? addBreaksAtGreaterThans(retn) : retn;
 		} catch (Exception e) {
 			logError("httpRESTGet(): Exception thrown.  Cannot return request.", e);
 			throw e;
@@ -571,7 +571,8 @@ public abstract class BaseServiceEndpointTest {
 		url += (!url.contains("?") && !url.endsWith("/")) ? "/?" : "";
 		url += (!url.contains("?") ? "?" : "");
 		url += (!url.endsWith("?") && !url.endsWith("&")) ? "&" : "";
-		return (url += buildQueryString(paramsList));
+		url += buildQueryString(paramsList);
+		return url;
 	}
 
 
@@ -607,7 +608,7 @@ public abstract class BaseServiceEndpointTest {
 			}
 		});
 		String querystring = querysb.toString();
-		return (!querystring.isEmpty() ? querystring.substring(0, querystring.length()-1) : querystring);
+		return !querystring.isEmpty() ? querystring.substring(0, querystring.length()-1) : querystring;
 	}
 
 
@@ -628,7 +629,7 @@ public abstract class BaseServiceEndpointTest {
 	 *
 	 * @param value
 	 * @param standInForBlankValue
-	 * @return
+	 * @return String
 	 */
 	private String getNormalizedCsvString(String value, String standInForBlankValue) {
 		if(value.startsWith(",")) {
